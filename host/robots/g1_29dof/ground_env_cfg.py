@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 import isaaclab.sim as sim_utils
+from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -23,6 +24,79 @@ from unitree_rl_lab.assets.robots.unitree import UNITREE_G1_29DOF_CFG
 from unitree_rl_lab.tasks.host import mdp
 
 
+# Task-local actuator configuration matching HoST's G1 PD gains. The six
+# joints added by the 29-DoF model inherit their HoST semantic group:
+# waist roll/pitch use waist gains and wrist pitch/yaw use wrist gains.
+HOST_G1_29DOF_CFG = UNITREE_G1_29DOF_CFG.replace(
+    actuators={
+        "hips_pitch_yaw": ImplicitActuatorCfg(
+            joint_names_expr=[".*_hip_pitch_joint", ".*_hip_yaw_joint"],
+            effort_limit_sim=88.0,
+            velocity_limit_sim=32.0,
+            stiffness=150.0,
+            damping=4.0,
+            armature=0.01,
+        ),
+        "hips_roll": ImplicitActuatorCfg(
+            joint_names_expr=[".*_hip_roll_joint"],
+            effort_limit_sim=139.0,
+            velocity_limit_sim=20.0,
+            stiffness=150.0,
+            damping=4.0,
+            armature=0.01,
+        ),
+        "knees": ImplicitActuatorCfg(
+            joint_names_expr=[".*_knee_joint"],
+            effort_limit_sim=139.0,
+            velocity_limit_sim=20.0,
+            stiffness=200.0,
+            damping=6.0,
+            armature=0.01,
+        ),
+        "ankles": ImplicitActuatorCfg(
+            joint_names_expr=[".*_ankle_.*_joint"],
+            effort_limit_sim=25.0,
+            velocity_limit_sim=37.0,
+            stiffness=40.0,
+            damping=2.0,
+            armature=0.01,
+        ),
+        "waist": ImplicitActuatorCfg(
+            joint_names_expr=["waist_.*_joint"],
+            effort_limit_sim=88.0,
+            velocity_limit_sim=32.0,
+            stiffness=100.0,
+            damping=4.0,
+            armature=0.01,
+        ),
+        "shoulders_elbows": ImplicitActuatorCfg(
+            joint_names_expr=[".*_shoulder_.*_joint", ".*_elbow_joint"],
+            effort_limit_sim=25.0,
+            velocity_limit_sim=37.0,
+            stiffness=100.0,
+            damping=4.0,
+            armature=0.01,
+        ),
+        "wrist_roll": ImplicitActuatorCfg(
+            joint_names_expr=[".*_wrist_roll_joint"],
+            effort_limit_sim=25.0,
+            velocity_limit_sim=37.0,
+            stiffness=100.0,
+            damping=4.0,
+            armature=0.01,
+        ),
+        "wrist_pitch_yaw": ImplicitActuatorCfg(
+            joint_names_expr=[".*_wrist_pitch_joint", ".*_wrist_yaw_joint"],
+            effort_limit_sim=5.0,
+            velocity_limit_sim=22.0,
+            stiffness=100.0,
+            damping=4.0,
+            armature=0.01,
+        ),
+    }
+)
+
+
 @configclass
 class HostGroundSceneCfg(InteractiveSceneCfg):
     terrain = TerrainImporterCfg(
@@ -38,7 +112,7 @@ class HostGroundSceneCfg(InteractiveSceneCfg):
         ),
         debug_vis=False,
     )
-    robot: ArticulationCfg = UNITREE_G1_29DOF_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot: ArticulationCfg = HOST_G1_29DOF_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", update_period=0.005, history_length=3, track_air_time=False
     )
@@ -110,6 +184,17 @@ class EventCfg:
             "asset_cfg": SceneEntityCfg("robot", body_names="torso_link"),
             "mass_distribution_params": (-2.0, 5.0),
             "operation": "add",
+        },
+    )
+    actuator_gains = EventTerm(
+        func=mdp.randomize_actuator_gains,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+            "stiffness_distribution_params": (0.85, 1.15),
+            "damping_distribution_params": (0.85, 1.15),
+            "operation": "scale",
+            "distribution": "uniform",
         },
     )
     reset_base = EventTerm(

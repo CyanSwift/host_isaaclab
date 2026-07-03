@@ -19,6 +19,7 @@ Unitree-G1-29dof-HoST-Ground
 - multiplicative upright/head-height objective
 - regularization, style, and post-stand rewards
 - upward assistance force and basic domain randomization
+- HoST-matched Kp/Kd values with 0.85–1.15 gain randomization
 - RSL-RL PPO configuration
 
 This repository contains only the HoST task extension. Isaac Lab,
@@ -76,7 +77,7 @@ The following original HoST features remain to be ported:
 - four-critic reward-group PPO
 - per-environment pulling-force/action-scale curriculum
 - initial unactuated phase and randomized action delay
-- full actuator and rigid-body domain randomization
+- motor strength, actuation-offset, and remaining rigid-body randomization
 - exact conversion of HoST auxiliary/keyframe bodies
 - wall, slope, platform, and additional prone variants
 
