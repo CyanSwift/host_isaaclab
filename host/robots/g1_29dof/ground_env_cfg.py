@@ -222,10 +222,11 @@ class EventCfg:
 
 @configclass
 class RewardsCfg:
-    # HoST task group: 2.5 * orientation * head-height.
+    # Isaac Lab multiplies reward weights by step_dt=0.02. HoST does not
+    # dt-scale its multiplicative task group, hence 2.5 / 0.02 = 125.
     stand_up = RewTerm(
         func=mdp.stand_up_task,
-        weight=2.5,
+        weight=125.0,
         params={
             "target_head_height": 1.0,
             "head_margin": 1.0,
@@ -238,11 +239,15 @@ class RewardsCfg:
     # Regularization group (HoST group weight 0.1).
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-8)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1.0e-3)
+    action_smoothness = RewTerm(func=mdp.action_smoothness_l2, weight=-1.0e-3)
     torques = RewTerm(func=mdp.joint_torques_l2, weight=-2.5e-7)
     joint_power = RewTerm(func=mdp.joint_power_l1, weight=-2.5e-6)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-1.0e-4)
     joint_tracking = RewTerm(func=mdp.joint_tracking_error, weight=-2.5e-5)
     joint_limits = RewTerm(func=mdp.joint_pos_limits, weight=-10.0)
+    joint_velocity_limits = RewTerm(
+        func=mdp.joint_velocity_soft_limits, weight=-0.1, params={"soft_limit": 0.9}
+    )
 
     # Style group.
     waist_deviation = RewTerm(
@@ -255,14 +260,22 @@ class RewardsCfg:
         },
     )
     hip_yaw_deviation = RewTerm(
-        func=mdp.joint_threshold,
+        func=mdp.paired_joint_deviation,
         weight=-10.0,
-        params={"lower": -1.4, "upper": 1.4, "asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_yaw_joint")},
+        params={
+            "max_abs": 1.4,
+            "both_abs": 0.9,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_yaw_joint"),
+        },
     )
     hip_roll_deviation = RewTerm(
-        func=mdp.joint_threshold,
+        func=mdp.paired_joint_deviation,
         weight=-10.0,
-        params={"lower": -1.4, "upper": 1.4, "asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_roll_joint")},
+        params={
+            "max_abs": 1.4,
+            "both_abs": 0.9,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*_hip_roll_joint"),
+        },
     )
     shoulder_roll_deviation = RewTerm(
         func=mdp.shoulder_roll_deviation,
@@ -272,12 +285,12 @@ class RewardsCfg:
     left_foot_displacement = RewTerm(
         func=mdp.foot_displacement,
         weight=2.5,
-        params={"stand_height": 0.65, "sigma": -2.0, "foot_cfg": SceneEntityCfg("robot", body_names="left_ankle_roll_link")},
+        params={"stand_height": 0.65, "sigma": -2.0, "foot_cfg": SceneEntityCfg("robot", body_names="left_ankle_pitch_link")},
     )
     right_foot_displacement = RewTerm(
         func=mdp.foot_displacement,
         weight=2.5,
-        params={"stand_height": 0.65, "sigma": -2.0, "foot_cfg": SceneEntityCfg("robot", body_names="right_ankle_roll_link")},
+        params={"stand_height": 0.65, "sigma": -2.0, "foot_cfg": SceneEntityCfg("robot", body_names="right_ankle_pitch_link")},
     )
     knee_deviation = RewTerm(
         func=mdp.joint_threshold,
@@ -290,7 +303,7 @@ class RewardsCfg:
         params={
             "base_height": 0.45,
             "knees_cfg": SceneEntityCfg("robot", body_names=["left_knee_link", "right_knee_link"]),
-            "feet_cfg": SceneEntityCfg("robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]),
+            "feet_cfg": SceneEntityCfg("robot", body_names=["left_ankle_pitch_link", "right_ankle_pitch_link"]),
         },
     )
     ground_parallel = RewTerm(
@@ -307,7 +320,7 @@ class RewardsCfg:
         weight=-10.0,
         params={
             "max_distance": 0.9,
-            "feet_cfg": SceneEntityCfg("robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]),
+            "feet_cfg": SceneEntityCfg("robot", body_names=["left_ankle_pitch_link", "right_ankle_pitch_link"]),
         },
     )
     style_ang_vel_xy = RewTerm(
@@ -333,7 +346,7 @@ class RewardsCfg:
         params={
             "stand_height": 0.65,
             "sigma": -2.0,
-            "feet_cfg": SceneEntityCfg("robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]),
+            "feet_cfg": SceneEntityCfg("robot", body_names=["left_ankle_pitch_link", "right_ankle_pitch_link"]),
         },
     )
     upper_body_pose = RewTerm(
@@ -342,6 +355,10 @@ class RewardsCfg:
         params={
             "stand_height": 0.65,
             "sigma": -0.1,
+            "target_positions": {
+                "left_shoulder_roll_joint": 0.3,
+                "right_shoulder_roll_joint": -0.3,
+            },
             "asset_cfg": SceneEntityCfg(
                 "robot",
                 joint_names=[

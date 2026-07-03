@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch
 from isaaclab.assets import Articulation
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 
 
 def _asset(env: ManagerBasedRLEnv, cfg: SceneEntityCfg) -> Articulation:
@@ -72,6 +72,50 @@ def joint_threshold(
     if upper is not None:
         failed |= torch.any(pos > upper, dim=1)
     return failed.float()
+
+
+def paired_joint_deviation(
+    env: ManagerBasedRLEnv,
+    max_abs: float,
+    both_abs: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Match HoST's bilateral hip threshold logic."""
+    pos = torch.abs(_asset(env, asset_cfg).data.joint_pos[:, asset_cfg.joint_ids])
+    return ((torch.max(pos, dim=1).values > max_abs) | (torch.min(pos, dim=1).values > both_abs)).float()
+
+
+def joint_velocity_soft_limits(
+    env: ManagerBasedRLEnv,
+    soft_limit: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """HoST velocity-limit cost, clipped to one per joint."""
+    robot = _asset(env, asset_cfg)
+    ids = asset_cfg.joint_ids
+    excess = torch.abs(robot.data.joint_vel[:, ids]) - robot.data.joint_vel_limits[:, ids] * soft_limit
+    return torch.sum(excess.clamp(min=0.0, max=1.0), dim=1)
+
+
+class action_smoothness_l2(ManagerTermBase):
+    """Second-order action difference used by HoST."""
+
+    def __init__(self, cfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._previous_previous_action = torch.zeros_like(env.action_manager.action)
+
+    def reset(self, env_ids=None) -> None:
+        if env_ids is None:
+            self._previous_previous_action.zero_()
+        else:
+            self._previous_previous_action[env_ids] = 0.0
+
+    def __call__(self, env: ManagerBasedRLEnv) -> torch.Tensor:
+        current = env.action_manager.action
+        previous = env.action_manager.prev_action
+        value = torch.sum(torch.square(current - 2.0 * previous + self._previous_previous_action), dim=1)
+        self._previous_previous_action.copy_(previous)
+        return value
 
 
 def shoulder_roll_deviation(
@@ -158,11 +202,17 @@ def target_upper_body_pose(
     env: ManagerBasedRLEnv,
     stand_height: float,
     sigma: float,
+    target_positions: dict[str, float],
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     robot = _asset(env, asset_cfg)
     ids = asset_cfg.joint_ids
-    error = torch.sum(torch.square(robot.data.joint_pos[:, ids] - robot.data.default_joint_pos[:, ids]), dim=1)
+    if isinstance(ids, slice):
+        ids = list(range(robot.num_joints))[ids]
+    target = torch.zeros_like(robot.data.joint_pos[:, ids])
+    for column, joint_id in enumerate(ids):
+        target[:, column] = target_positions.get(robot.joint_names[joint_id], 0.0)
+    error = torch.sum(torch.square(robot.data.joint_pos[:, ids] - target), dim=1)
     return torch.exp(sigma * error) * (robot.data.root_pos_w[:, 2] > stand_height)
 
 
