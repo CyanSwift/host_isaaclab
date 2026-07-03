@@ -33,11 +33,17 @@ versions currently used by upstream `unitree_rl_lab`:
 - Isaac Sim 5.1
 - Isaac Lab 2.3
 
-Copy the task package into a `unitree_rl_lab` checkout:
+Copy the root-level `host` package into a `unitree_rl_lab` checkout:
 
 ```bash
-cp -r source/unitree_rl_lab/unitree_rl_lab/tasks/host \
+cp -r host \
   /path/to/unitree_rl_lab/source/unitree_rl_lab/unitree_rl_lab/tasks/
+```
+
+For example, when both repositories are in the same parent directory:
+
+```bash
+cp -r host_isaaclab/host unitree_rl_lab/source/unitree_rl_lab/unitree_rl_lab/tasks/
 ```
 
 Configure `UNITREE_MODEL_DIR` in:
